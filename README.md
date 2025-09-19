@@ -1,110 +1,158 @@
-# Character-Level RNN Text Generator
+# **Bidirectional GRU Name Generator**
+**Note:** This is the second, more advanced version of this project.  (September 2025)
 
-A TensorFlow/Keras implementation of a character-level recurrent neural network for text generation, designed for generating names or short text sequences.
+A TensorFlow/Keras implementation of a character-level bidirectional GRU neural network for generating human-like names using deep learning.
 
-## Overview
+## **Overview**
 
-This project implements a character-level RNN that learns to generate text one character at a time. It's particularly suited for generating names, words, or other short text sequences by learning patterns from training data.
+This project implements a character-level recurrent neural network that learns to generate realistic human names by learning patterns from a dataset of existing names. 
+The model uses bidirectional GRUs to capture both forward and backward dependencies in character sequences, making it particularly effective for name generation.
 
-## Architecture Choices
+## **Architecture Choices**
 
-### Model Architecture
+### **Model Architecture**
 
-**Dual-Layer LSTM Design**: The model uses two stacked LSTM layers (configurable to GRU or SimpleRNN) for capturing both short-term and long-term dependencies in character sequences. The dual-layer approach allows the network to learn more complex patterns than a single layer would permit.
+**Bidirectional GRU Layers**: The model uses stacked bidirectional GRU layers (default: [128, 64] units) that process sequences in both forward and backward directions. 
 
-**Embedding Layer**: Characters are first mapped to dense vector representations (64-dimensional by default) rather than using one-hot encoding. This reduces dimensionality and allows the model to learn semantic relationships between characters.
+**Character Embedding**: Characters are mapped to dense 32-dimensional vector representations, allowing the model to learn relationships between characters more efficiently than one-hot encoding.
 
-**Dropout Regularization**: A 0.2 dropout rate prevents overfitting by randomly dropping connections during training, improving generalization to unseen sequences.
+**Batch Normalization**: Applied after each GRU layer to stabilize training and accelerate convergence, particularly important when training on diverse name datasets.
 
-**Dense Output Layer**: The final layer outputs probabilities over the entire vocabulary, enabling character-by-character generation.
+**Dense Classification Layers**: Two fully-connected layers (128 and 64 units) with ReLU activation process the GRU outputs before the final softmax classification.
 
-### Training Strategy
+**Dropout Regularization**: 0.3 dropout rate throughout the network prevents overfitting and improves generalization to generate novel names.
 
-**Sequential Processing**: The model processes examples one at a time with immediate gradient updates, similar to online learning. This approach works well for small datasets like name lists.
+### **Training Strategy**
 
-**Dynamic Padding**: Input sequences are padded to a consistent length (default 10 characters) to enable batch processing while maintaining variable-length generation capability.
+**Sequence-to-Sequence Learning**: For each position in a name, the model learns to predict the next character given all previous characters, creating a autoregressive generation capability.
 
-**Custom Loss Function**: Uses sparse categorical crossentropy with masking support to handle variable-length sequences efficiently.
+**Special Tokens**: 
+- `^` (start token): Marks the beginning of a name
+- `$` (end token): Marks the end of a name
+- Space padding: Ensures consistent sequence lengths
 
-### Generation Mechanism
+**Adaptive Learning Rate**: Uses ReduceLROnPlateau callback to automatically adjust learning rate when validation loss plateaus, with early stopping to prevent overfitting.
 
-**Temperature-Controlled Sampling**: The temperature parameter (0.1-2.0) controls randomness:
-- Low temperature (0.1): Conservative, high-confidence predictions
-- High temperature (2.0): More creative, diverse outputs
+**Data Requirements**: Works best with 1000+ unique names. The model can handle diverse cultural naming patterns and learns length distributions automatically.
 
-**Stop Character**: A designated stop character (`,` by default) allows the model to learn sequence boundaries and generate variable-length outputs naturally.
+### **Generation Mechanism**
 
-## Files
+**Temperature-Controlled Sampling**: 
+- **Low temperature (0.3-0.5)**: Conservative, common name patterns
+- **Medium temperature (0.8-1.0)**: Balanced creativity and realism
+- **High temperature (1.2-1.5)**: More creative and unusual names
 
-- `super_model.py`: Core model implementation with LSTM/GRU architectures
-- `train.py`: Data processing, training loop, and model persistence
-- `names.txt`: Training data (expected format: comma-separated names)
+**Autoregressive Generation**: Names are generated character-by-character, with each prediction conditioned on all previous characters until the end token is generated or maximum length is reached.
 
-## Usage
+**Starting Letter Support**: Can generate names beginning with specific letters or letter combinations.
 
-### Training a New Model
+## **Files**
+
+* `main.py`: Program entry point
+* `BiDir_SuperModel.py.py`: Complete implementation of the model with SuperRNN class
+* `InputProcessor.py`: Contains a helper class for working with text input  
+* `names.txt`: Training dataset (one name per line)
+* `super_model/`: Directory containing saved model and metadata
+  - `model.keras`: Trained Keras model
+  - `metadata.json`: Character mappings and configuration
+
+## **Usage**
+
+### **Training a New Model**
 
 ```python
-from train import create_model, save_complete_model
+from BiDir_SuperModel import SuperRNN
+from InputProcessor import TextDataProcessor
 
-# Load and preprocess data
-text = open('names.txt', 'r').read().lower().replace(' ', '')
-model, processor = create_model(text)
+# Max length of a word
+max_length = 15 
+
+# Initialize generator
+processor = TextDataProcessor("names.txt", max_length)
+super_model = SuperRNN(
+    text_processor=processor,
+    gru_units=[128, 64],
+    dropout_rate=0.3,
+    learning_rate=0.001
+)
 
 # Train the model
-names = [w + ',' for w in text.split(',')]
-model.train_model(processor, names, num_iterations=10000)
+history = super_model.train(
+    epochs=100,
+    batch_size=128,
+    validation_split=0.2
+)
 
-# Save everything
-save_complete_model(model, processor, 'super_model')
+# Save the trained model
+super_model.save_model('super_model')
 ```
 
-### Loading and Using a Trained Model
+### **Loading and Generating Names**
 
 ```python
-from train import load_complete_model
+from BiDir_SuperModel import SuperRNN
 
-# Load saved model
-model, processor = load_complete_model('super_model')
+# Load model
+super_model = SuperRNN.load_model("super_model_dir")
 
-# Generate text
-generated = model.generate_text(
-    start_string="john",
-    char_to_idx=processor.char_to_idx,
-    idx_to_char=processor.idx_to_char,
-    num_generate=5,
-    temperature=0.8
-)
+# Generate single name
+name = super_model.generate(temperature=1.0, start_char='M')
+print(f"Generated: {name}")
+
 ```
 
-## Key Features
 
-- **Flexible RNN Types**: Support for LSTM, GRU, or SimpleRNN architectures
-- **Stateful Generation**: Optional stateful mode for maintaining context across batches
-- **Dual Persistence**: Models saved in both Keras format and separate weights/config files
-- **Vocabulary Mapping**: Character mappings preserved in JSON and pickle formats for compatibility
+## **Key Features**
 
-## Requirements
+* **Bidirectional Processing**: Captures both forward and backward character dependencies
+* **Cultural Diversity**: Learns patterns from names across different cultures
+* **Variable Length Generation**: Automatically learns appropriate name lengths
+* **Temperature Control**: Fine-tune creativity vs. realism in generated names
+* **Batch Generation**: Efficiently generate multiple names at once
+* **Model Versioning**: Save and load multiple model versions with metadata
+* **Starting Letter Constraints**: Generate names beginning with specific characters
 
-- TensorFlow 2.x
-- Keras
-- NumPy
+## **Model Parameters**
 
-## Model Parameters
+* `max_length`: 15 (maximum name length)
+* `embedding_dim`: 32 (character embedding size)
+* `gru_units`: [128, 64] (hidden units per layer)
+* `dropout_rate`: 0.3
+* `learning_rate`: 0.001
+* `batch_size`: 128
+* `early_stopping_patience`: 10-20 epochs
 
-- `vocab_size`: Automatically determined from training data
-- `embedding_dim`: 64 (character embedding size)
-- `rnn_units`: 128 (hidden state size)
-- `learning_rate`: 0.01
-- `dropout`: 0.2
-- `sequence_length`: 10 (for training padding)
+## **Performance Metrics**
 
-## Licence 
+With a dataset of 2000+ names, expect:
+* Training loss: 1.5-2.0
+* Validation accuracy: 35-45%
+* Generation quality: Realistic, pronounceable names
 
-This project is meant for educational purposes only.
+## **Requirements**
 
-## Acknowledgments
-This work is highly inspired by DeepLearning.AI Specialization:
-https://www.coursera.org/learn/nlp-sequence-models
+* TensorFlow 2.x
+* Keras
+* NumPy
+* Python 3.7+
 
+## **Optional Requirements**
 
+* matplotlib (for training visualization)
+
+## **Dataset Recommendations**
+
+For best results, your `names.txt` should contain:
+* At least 1000 unique names (2000+ recommended)
+* One name per line
+* Consistent formatting (e.g., all lowercase or properly capitalized)
+
+## **License**
+
+This project is for educational purposes. Model trained on publicly available name datasets.
+
+## **Acknowledgments**
+
+- Inspired by Andrej Karpathy's char-rnn work
+- Architecture influenced by sequence-to-sequence modeling techniques
+- Training strategies adapted from NLP best practices
